@@ -24,6 +24,9 @@ jobs:
       - name: Run Postman Collection
         run: |
           newman run "https://api.getpostman.com/collections/48072727-563ceed9-6504-402b-b534-cecb13f79d6f?apikey=${{ secrets.POSTMAN_API_KEY }}" \
+            --environment "https://api.getpostman.com/environments/48072727-4c7a9092-93cc-4de3-8b56-e0bf5dbd09a1?apikey=${{ secrets.POSTMAN_API_KEY }}" \
+            --ssl-client-cert "$HOME/actions-runner/certs/d0AJApiAPQo440yZZhXKBS2NlhxU9r1gHFAHEKFgVRk.pem" \
+            --ssl-client-key "$HOME/actions-runner/certs/b9d20fea-611f-4a12-845e-81d380645955-opf_uae_client_transport.key" \
             --insecure \
             --reporters cli,htmlextra \
             --reporter-htmlextra-export reports/test-report.html
