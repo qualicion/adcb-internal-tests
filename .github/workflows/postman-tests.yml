@@ -1,40 +1,4 @@
-name: Postman API Tests
-
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-
-jobs:
-  api-tests:
-    runs-on: self-hosted
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Install Newman
-        run: npm install -g newman newman-reporter-htmlextra newman-reporter-junitfull
-      
-      - name: Run Postman Collection
-        run: |
-          mkdir -p reports
-          newman run "https://api.getpostman.com/collections/48072727-563ceed9-6504-402b-b534-cecb13f79d6f?apikey=${{ secrets.POSTMAN_API_KEY }}" \
-            --environment "https://api.getpostman.com/environments/48072727-4c7a9092-93cc-4de3-8b56-e0bf5dbd09a1?apikey=${{ secrets.POSTMAN_API_KEY }}" \
-            --ssl-client-cert "/Users/boduniyi/Desktop/actions-runner/certs/CJE8NXWsIJe-oN0U5beb1TCIEvpAKrhfWxHtNd7ORko.pem" \
-            --ssl-client-key "/Users/boduniyi/Desktop/actions-runner/certs/86978693-3039-449d-9acd-3771392a4c7f-opf_uae_client_signing.key" \
-            --insecure \
-            --reporters cli,htmlextra,junitfull,json \
-            --reporter-htmlextra-export reports/test-report.html \
-            --reporter-junitfull-export reports/junit-report.xml \
-            --reporter-json-export reports/results.json
-      
-      - name: Send Slack Notification
+- name: Send Slack Notification
         if: always()
         run: |
           if [ -f reports/results.json ]; then
@@ -45,7 +9,10 @@ jobs:
             PASSED_ASSERTIONS=$((TOTAL_ASSERTIONS - FAILED_ASSERTIONS))
             PASSED_REQUESTS=$((TOTAL_REQUESTS - FAILED_REQUESTS))
             RESPONSE_TIME=$(jq '.run.timings.responseAverage' reports/results.json 2>/dev/null || echo 0)
-            ENDPOINT_NAME=$(jq -r '.run.executions[0].item.name' reports/results.json 2>/dev/null || echo "Unknown")
+            
+            # Get all endpoint names
+            ENDPOINTS=$(jq -r '.run.executions[] | "\(.item.name): \(.response.code // "N/A")"' reports/results.json 2>/dev/null | sed 's/^/• /' | head -20)
+            
             if [ "$TOTAL_ASSERTIONS" -gt 0 ]; then
               SUCCESS_RATE=$((PASSED_ASSERTIONS * 100 / TOTAL_ASSERTIONS))
             else
@@ -59,25 +26,31 @@ jobs:
             PASSED_ASSERTIONS=0
             PASSED_REQUESTS=0
             RESPONSE_TIME=0
-            ENDPOINT_NAME="Unknown"
+            ENDPOINTS="No data"
             SUCCESS_RATE=0
           fi
+          
           if [ "$FAILED_ASSERTIONS" -eq 0 ]; then
             STATUS_EMOJI="✅"
-            STATUS_TEXT="ALL TESTS PASSED"
+            STATUS_TEXT="All ${TOTAL_ASSERTIONS} tests passed successfully"
             COLOR="#36a64f"
           else
             STATUS_EMOJI="❌"
-            STATUS_TEXT="SOME TESTS FAILED"
+            STATUS_TEXT="${FAILED_ASSERTIONS} of ${TOTAL_ASSERTIONS} tests failed (${SUCCESS_RATE}% pass rate)"
             COLOR="#dc3545"
           fi
+          
           TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
           GITHUB_URL="https://github.com/qualicion/adcb-internal-tests/actions"
+          
+          # Escape endpoints for JSON
+          ENDPOINTS_JSON=$(echo "$ENDPOINTS" | jq -Rs .)
+          
           jq -n \
             --arg status_emoji "$STATUS_EMOJI" \
             --arg timestamp "$TIMESTAMP" \
             --arg status_text "$STATUS_TEXT" \
-            --arg endpoint "$ENDPOINT_NAME" \
+            --argjson endpoints "$ENDPOINTS_JSON" \
             --arg total_req "$TOTAL_REQUESTS" \
             --arg passed_req "$PASSED_REQUESTS" \
             --arg failed_req "$FAILED_REQUESTS" \
@@ -88,11 +61,4 @@ jobs:
             --arg success_rate "$SUCCESS_RATE" \
             --arg github_url "$GITHUB_URL" \
             --arg color "$COLOR" \
-            '{"attachments":[{"color":$color,"blocks":[{"type":"header","text":{"type":"plain_text","text":"\($status_emoji) Newman API Test Results","emoji":true}},{"type":"section","text":{"type":"mrkdwn","text":"*Test Run:* \($timestamp)\n*Status:* \($status_text)\n*Endpoint:* `\($endpoint)`"}},{"type":"divider"},{"type":"section","text":{"type":"mrkdwn","text":"*📊 Test Summary*"}},{"type":"section","fields":[{"type":"mrkdwn","text":"*Success Rate*\n`\($success_rate)%` (\($passed_assert)/\($total_assert))"},{"type":"mrkdwn","text":"*Response Time*\n`\($response_time) ms` avg"}]},{"type":"section","fields":[{"type":"mrkdwn","text":"*✅ Passed*\n`\($passed_assert)` assertions"},{"type":"mrkdwn","text":"*❌ Failed*\n`\($failed_assert)` assertions"}]},{"type":"section","fields":[{"type":"mrkdwn","text":"*Endpoints*\n`\($total_req)` tested"},{"type":"mrkdwn","text":"*Total Tests*\n`\($total_assert)` assertions"}]},{"type":"divider"},{"type":"actions","elements":[{"type":"button","text":{"type":"plain_text","text":"📄 Download Full Report","emoji":true},"url":$github_url,"style":"primary"}]},{"type":"context","elements":[{"type":"mrkdwn","text":"🏦 Open Finance UAT | Retail API Tests"}]}]}]}' | curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" -H 'Content-Type: application/json' -d @-
-      
-      - name: Upload Test Report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: newman-report
-          path: reports/
+            '{"attachments":[{"color":$color,"blocks":[{"type":"header","text":{"type":"plain_text","text":"\($status_emoji) Newman API Test Results","emoji":true}},{"type":"section","text":{"type":"mrkdwn","text":"*Test Run:* \($timestamp)\n*Status:* \($status_text)"}},{"type":"divider"},{"type":"section","text":{"type":"mrkdwn","text":"*📍 Endpoints Tested*\n\($endpoints)"}},{"type":"divider"},{"type":"section","text":{"type":"mrkdwn","text":"*📊 Test Summary*"}},{"type":"section","fields":[{"type":"mrkdwn","text":"*Success Rate*\n`\($success_rate)%` (\($passed_assert)/\($total_assert))"},{"type":"mrkdwn","text":"*Response Time*\n`\($response_time) ms` avg"}]},{"type":"section","fields":[{"type":"mrkdwn","text":"*✅ Passed*\n`\($passed_assert)` assertions"},{"type":"mrkdwn","text":"*❌ Failed*\n`\($failed_assert)` assertions"}]},{"type":"section","fields":[{"type":"mrkdwn","text":"*Endpoints*\n`\($total_req)` tested (`\($passed_req)` passed)"},{"type":"mrkdwn","text":"*Total Tests*\n`\($total_assert)` assertions"}]},{"type":"divider"},{"type":"actions","elements":[{"type":"button","text":{"type":"plain_text","text":"📄 Download Full Report","emoji":true},"url":$github_url,"style":"primary"}]},{"type":"context","elements":[{"type":"mrkdwn","text":"🏦 Open Finance UAT | Retail API Tests"}]}]}]}' | curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" -H 'Content-Type: application/json' -d @-
