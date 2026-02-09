@@ -58,6 +58,7 @@ jobs:
             ENDPOINT_NAME="Unknown"
             ENDPOINT_URL="Unknown"
           fi
+          
           if [ "$FAILED_ASSERTIONS" -eq 0 ]; then
             STATUS_EMOJI="✅"
             STATUS_TEXT="ALL TESTS PASSED"
@@ -65,20 +66,74 @@ jobs:
             STATUS_EMOJI="❌"
             STATUS_TEXT="TESTS FAILED"
           fi
-          TABLE="┌─────────────────────────────────┬────────┐
-│ METRIC                          │ VALUE  │
-├─────────────────────────────────┼────────┤
-│ Endpoints Tested                │   ${TOTAL_REQUESTS}    │
-│ Passed Endpoints                │   ${PASSED_REQUESTS}    │
-│ Failed Endpoints                │   ${FAILED_REQUESTS}    │
-├─────────────────────────────────┼────────┤
-│ Total Assertions                │   ${TOTAL_ASSERTIONS}   │
-│ Passed Assertions               │   ${PASSED_ASSERTIONS}   │
-│ Failed Assertions               │   ${FAILED_ASSERTIONS}   │
-├─────────────────────────────────┼────────┤
-│ Avg Response Time               │ ${RESPONSE_TIME}ms │
-└─────────────────────────────────┴────────┘"
-          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" -H 'Content-Type: application/json' -d "{\"blocks\":[{\"type\":\"header\",\"text\":{\"type\":\"plain_text\",\"text\":\"${STATUS_EMOJI} Newman Test Report - $(date '+%Y-%m-%d %H:%M')\",\"emoji\":true}},{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"*Status:* ${STATUS_TEXT}\\n*Endpoint:* \\\`${ENDPOINT_NAME}\\\`\\n*URL:* \\\`${ENDPOINT_URL}\\\`\"}},{\"type\":\"divider\"},{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"\\\`\\\`\\\`${TABLE}\\\`\\\`\\\`\"}},{\"type\":\"section\",\"fields\":[{\"type\":\"mrkdwn\",\"text\":\"*📄 Reports:*\\n<https://github.com/qualicion/adcb-internal-tests/actions|View in GitHub Actions>\"},{\"type\":\"mrkdwn\",\"text\":\"*🔧 Project:*\\nOpen Finance UAT - Retail\"}]}]}"
+          
+          cat > /tmp/slack_payload.json << 'SLACKEOF'
+          {
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "STATUS_PLACEHOLDER Newman Test Report - TIME_PLACEHOLDER",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {"type": "mrkdwn", "text": "*Status:*\nSTATUS_TEXT_PLACEHOLDER"},
+                  {"type": "mrkdwn", "text": "*Endpoint:*\nENDPOINT_PLACEHOLDER"}
+                ]
+              },
+              {
+                "type": "divider"
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {"type": "mrkdwn", "text": "*📊 Endpoints Tested:*\nTOTAL_REQ_PLACEHOLDER"},
+                  {"type": "mrkdwn", "text": "*✅ Passed Endpoints:*\nPASSED_REQ_PLACEHOLDER"},
+                  {"type": "mrkdwn", "text": "*❌ Failed Endpoints:*\nFAILED_REQ_PLACEHOLDER"},
+                  {"type": "mrkdwn", "text": "*⚡ Avg Response:*\nRESPONSE_TIME_PLACEHOLDER ms"}
+                ]
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {"type": "mrkdwn", "text": "*🧪 Total Assertions:*\nTOTAL_ASSERT_PLACEHOLDER"},
+                  {"type": "mrkdwn", "text": "*✅ Passed:*\nPASSED_ASSERT_PLACEHOLDER"},
+                  {"type": "mrkdwn", "text": "*❌ Failed:*\nFAILED_ASSERT_PLACEHOLDER"},
+                  {"type": "mrkdwn", "text": "*📄 Report:*\n<https://github.com/qualicion/adcb-internal-tests/actions|Download>"}
+                ]
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "Open Finance UAT - Retail API Tests"
+                  }
+                ]
+              }
+            ]
+          }
+          SLACKEOF
+          
+          sed -i "s/STATUS_PLACEHOLDER/${STATUS_EMOJI}/g" /tmp/slack_payload.json
+          sed -i "s/TIME_PLACEHOLDER/$(date '+%Y-%m-%d %H:%M')/g" /tmp/slack_payload.json
+          sed -i "s/STATUS_TEXT_PLACEHOLDER/${STATUS_TEXT}/g" /tmp/slack_payload.json
+          sed -i "s/ENDPOINT_PLACEHOLDER/${ENDPOINT_NAME}/g" /tmp/slack_payload.json
+          sed -i "s/TOTAL_REQ_PLACEHOLDER/${TOTAL_REQUESTS}/g" /tmp/slack_payload.json
+          sed -i "s/PASSED_REQ_PLACEHOLDER/${PASSED_REQUESTS}/g" /tmp/slack_payload.json
+          sed -i "s/FAILED_REQ_PLACEHOLDER/${FAILED_REQUESTS}/g" /tmp/slack_payload.json
+          sed -i "s/RESPONSE_TIME_PLACEHOLDER/${RESPONSE_TIME}/g" /tmp/slack_payload.json
+          sed -i "s/TOTAL_ASSERT_PLACEHOLDER/${TOTAL_ASSERTIONS}/g" /tmp/slack_payload.json
+          sed -i "s/PASSED_ASSERT_PLACEHOLDER/${PASSED_ASSERTIONS}/g" /tmp/slack_payload.json
+          sed -i "s/FAILED_ASSERT_PLACEHOLDER/${FAILED_ASSERTIONS}/g" /tmp/slack_payload.json
+          
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H 'Content-Type: application/json' \
+            --data @/tmp/slack_payload.json
       
       - name: Upload Test Report
         uses: actions/upload-artifact@v4
