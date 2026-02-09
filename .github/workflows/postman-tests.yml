@@ -27,6 +27,7 @@ jobs:
         run: npm install -g newman newman-reporter-htmlextra newman-reporter-junitfull
       
       - name: Run Postman Collection
+        continue-on-error: true
         run: |
           mkdir -p reports
           newman run "https://api.getpostman.com/collections/48072727-563ceed9-6504-402b-b534-cecb13f79d6f?apikey=${{ secrets.POSTMAN_API_KEY }}" \
@@ -40,14 +41,17 @@ jobs:
             --reporter-json-export reports/results.json
       
       - name: Setup Pages
+        if: always()
         uses: actions/configure-pages@v4
       
       - name: Upload artifact
+        if: always()
         uses: actions/upload-pages-artifact@v3
         with:
           path: 'reports'
       
       - name: Deploy to GitHub Pages
+        if: always()
         id: deployment
         uses: actions/deploy-pages@v4
       
@@ -62,7 +66,7 @@ jobs:
             PASSED_ASSERTIONS=$((TOTAL_ASSERTIONS - FAILED_ASSERTIONS))
             PASSED_REQUESTS=$((TOTAL_REQUESTS - FAILED_REQUESTS))
             RESPONSE_TIME=$(jq '.run.timings.responseAverage' reports/results.json 2>/dev/null || echo 0)
-            ENDPOINTS=$(jq -r '.run.executions[] | "• \(.item.name): \(.response.code // "N/A")"' reports/results.json 2>/dev/null | head -20)
+            ENDPOINTS=$(jq -r '.run.executions[] | "\(.item.name): \(.response.code // \"N/A\")"' reports/results.json 2>/dev/null | sed 's/^/• /' | head -20 | tr '\n' '|' | sed 's/|$//' | sed 's/|/\\n/g')
             if [ "$TOTAL_ASSERTIONS" -gt 0 ]; then
               SUCCESS_RATE=$((PASSED_ASSERTIONS * 100 / TOTAL_ASSERTIONS))
             else
@@ -79,36 +83,62 @@ jobs:
             ENDPOINTS="No data"
             SUCCESS_RATE=0
           fi
+          
           if [ "$FAILED_ASSERTIONS" -eq 0 ]; then
             STATUS_EMOJI="✅"
-            STATUS_TEXT="All ${TOTAL_ASSERTIONS} tests passed successfully"
-            COLOR="#36a64f"
+            STATUS_TEXT="All ${TOTAL_ASSERTIONS} tests passed"
+            COLOR="good"
           else
-            STATUS_EMOJI="❌"
             STATUS_TEXT="${FAILED_ASSERTIONS} of ${TOTAL_ASSERTIONS} tests failed (${SUCCESS_RATE}% pass rate)"
-            COLOR="#dc3545"
+            STATUS_EMOJI="❌"
+            COLOR="danger"
           fi
+          
           TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
-          REPORT_URL="${{ steps.deployment.outputs.page_url }}test-report.html"
-          ENDPOINTS_JSON=$(echo "$ENDPOINTS" | jq -Rs .)
-          jq -n \
-            --arg status_emoji "$STATUS_EMOJI" \
-            --arg timestamp "$TIMESTAMP" \
-            --arg status_text "$STATUS_TEXT" \
-            --argjson endpoints "$ENDPOINTS_JSON" \
-            --arg total_req "$TOTAL_REQUESTS" \
-            --arg passed_req "$PASSED_REQUESTS" \
-            --arg failed_req "$FAILED_REQUESTS" \
-            --arg response_time "$RESPONSE_TIME" \
-            --arg total_assert "$TOTAL_ASSERTIONS" \
-            --arg passed_assert "$PASSED_ASSERTIONS" \
-            --arg failed_assert "$FAILED_ASSERTIONS" \
-            --arg success_rate "$SUCCESS_RATE" \
-            --arg report_url "$REPORT_URL" \
-            --arg color "$COLOR" \
-            '{"attachments":[{"color":$color,"blocks":[{"type":"header","text":{"type":"plain_text","text":"\($status_emoji) Newman API Test Results","emoji":true}},{"type":"section","text":{"type":"mrkdwn","text":"*Test Run:* \($timestamp)\n*Status:* \($status_text)"}},{"type":"divider"},{"type":"section","text":{"type":"mrkdwn","text":"*📍 Endpoints Tested*\n\($endpoints)"}},{"type":"divider"},{"type":"section","text":{"type":"mrkdwn","text":"*📊 Test Summary*"}},{"type":"section","fields":[{"type":"mrkdwn","text":"*Success Rate*\n`\($success_rate)%` (\($passed_assert)/\($total_assert))"},{"type":"mrkdwn","text":"*Response Time*\n`\($response_time) ms` avg"}]},{"type":"section","fields":[{"type":"mrkdwn","text":"*✅ Passed*\n`\($passed_assert)` assertions"},{"type":"mrkdwn","text":"*❌ Failed*\n`\($failed_assert)` assertions"}]},{"type":"section","fields":[{"type":"mrkdwn","text":"*Endpoints*\n`\($total_req)` tested (`\($passed_req)` passed)"},{"type":"mrkdwn","text":"*Total Tests*\n`\($total_assert)` assertions"}]},{"type":"divider"},{"type":"actions","elements":[{"type":"button","text":{"type":"plain_text","text":"📄 View Full Report Online","emoji":true},"url":$report_url,"style":"primary"}]},{"type":"context","elements":[{"type":"mrkdwn","text":"🏦 Open Finance UAT | Retail API Tests"}]}]}]}' | curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" -H 'Content-Type: application/json' -d @-
+          REPORT_URL="https://qualicion.github.io/adcb-internal-tests/test-report.html"
+          
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"text\": \"${STATUS_EMOJI} Newman API Test Results - ${TIMESTAMP}\",
+              \"attachments\": [{
+                \"color\": \"${COLOR}\",
+                \"blocks\": [
+                  {
+                    \"type\": \"section\",
+                    \"text\": {
+                      \"type\": \"mrkdwn\",
+                      \"text\": \"*Status:* ${STATUS_TEXT}\\n*Endpoints Tested:* ${ENDPOINTS}\"
+                    }
+                  },
+                  {
+                    \"type\": \"section\",
+                    \"fields\": [
+                      {\"type\": \"mrkdwn\", \"text\": \"*Success Rate*\\n\`${SUCCESS_RATE}%\` (${PASSED_ASSERTIONS}/${TOTAL_ASSERTIONS})\" },
+                      {\"type\": \"mrkdwn\", \"text\": \"*Avg Response*\\n\`${RESPONSE_TIME} ms\`\"}
+                    ]
+                  },
+                  {
+                    \"type\": \"section\",
+                    \"fields\": [
+                      {\"type\": \"mrkdwn\", \"text\": \"*✅ Passed*\\n\`${PASSED_ASSERTIONS}\` assertions\"},
+                      {\"type\": \"mrkdwn\", \"text\": \"*❌ Failed*\\n\`${FAILED_ASSERTIONS}\` assertions\"}
+                    ]
+                  },
+                  {
+                    \"type\": \"actions\",
+                    \"elements\": [{
+                      \"type\": \"button\",
+                      \"text\": {\"type\": \"plain_text\", \"text\": \"📄 View Full Report\"},
+                      \"url\": \"${REPORT_URL}\",
+                      \"style\": \"primary\"
+                    }]
+                  }
+                ]
+              }]
+            }"
       
-      - name: Upload Test Report
+      - name: Upload Test Report  
         uses: actions/upload-artifact@v4
         if: always()
         with:
