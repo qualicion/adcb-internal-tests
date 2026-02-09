@@ -38,23 +38,30 @@ jobs:
         if: always()
         run: |
           if [ -f reports/results.json ]; then
-            TOTAL_TESTS=$(jq '.run.stats.assertions.total' reports/results.json 2>/dev/null || echo 0)
-            FAILED_TESTS=$(jq '.run.stats.assertions.failed' reports/results.json 2>/dev/null || echo 0)
-            PASSED_TESTS=$((TOTAL_TESTS - FAILED_TESTS))
+            TOTAL_REQUESTS=$(jq '.run.stats.requests.total' reports/results.json 2>/dev/null || echo 0)
+            FAILED_REQUESTS=$(jq '.run.stats.requests.failed' reports/results.json 2>/dev/null || echo 0)
+            TOTAL_ASSERTIONS=$(jq '.run.stats.assertions.total' reports/results.json 2>/dev/null || echo 0)
+            FAILED_ASSERTIONS=$(jq '.run.stats.assertions.failed' reports/results.json 2>/dev/null || echo 0)
+            PASSED_ASSERTIONS=$((TOTAL_ASSERTIONS - FAILED_ASSERTIONS))
+            PASSED_REQUESTS=$((TOTAL_REQUESTS - FAILED_REQUESTS))
+            RESPONSE_TIME=$(jq '.run.timings.responseAverage' reports/results.json 2>/dev/null || echo 0)
           else
-            TOTAL_TESTS=0
-            FAILED_TESTS=0
-            PASSED_TESTS=0
+            TOTAL_REQUESTS=0
+            FAILED_REQUESTS=0
+            TOTAL_ASSERTIONS=0
+            FAILED_ASSERTIONS=0
+            PASSED_ASSERTIONS=0
+            PASSED_REQUESTS=0
+            RESPONSE_TIME=0
           fi
-          if [ "$FAILED_TESTS" -eq 0 ]; then
+          if [ "$FAILED_ASSERTIONS" -eq 0 ]; then
             STATUS="✅ All Tests Passed"
             COLOR="good"
           else
-            STATUS="❌ ${FAILED_TESTS} Tests Failed"
+            STATUS="❌ ${FAILED_ASSERTIONS} Assertions Failed"
             COLOR="danger"
           fi
-          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" -H 'Content-Type: application/json' -d "{\"text\":\"Newman Test Report - $(date '+%Y-%m-%d %H:%M')\",\"attachments\":[{\"color\":\"${COLOR}\",\"title\":\"${STATUS}\",\"fields\":[{\"title\":\"Total Assertions\",\"value\":\"${TOTAL_TESTS}\",\"short\":true},{\"title\":\"Passed\",\"value\":\"${PASSED_TESTS}\",\"short\":true},{\"title\":\"Failed\",\"value\":\"${FAILED_TESTS}\",\"short\":true}],\"footer\":\"Download HTML report from GitHub Actions artifacts\"}]}"
-      
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" -H 'Content-Type: application/json' -d "{\"text\":\"Newman Test Report - $(date '+%Y-%m-%d %H:%M')\",\"attachments\":[{\"color\":\"${COLOR}\",\"title\":\"${STATUS}\",\"fields\":[{\"title\":\"📊 Endpoints Tested\",\"value\":\"${TOTAL_REQUESTS}\",\"short\":true},{\"title\":\"✅ Passed Endpoints\",\"value\":\"${PASSED_REQUESTS}\",\"short\":true},{\"title\":\"❌ Failed Endpoints\",\"value\":\"${FAILED_REQUESTS}\",\"short\":true},{\"title\":\"🧪 Total Assertions\",\"value\":\"${TOTAL_ASSERTIONS}\",\"short\":true},{\"title\":\"✅ Passed Assertions\",\"value\":\"${PASSED_ASSERTIONS}\",\"short\":true},{\"title\":\"❌ Failed Assertions\",\"value\":\"${FAILED_ASSERTIONS}\",\"short\":true},{\"title\":\"⚡ Avg Response Time\",\"value\":\"${RESPONSE_TIME}ms\",\"short\":true},{\"title\":\"📄 Full Report\",\"value\":\"<https://github.com/qualicion/adcb-internal-tests/actions|Download HTML Report>\",\"short\":true}],\"footer\":\"Open Finance UAT - Retail API Tests\"}]}"
       - name: Upload Test Report
         uses: actions/upload-artifact@v4
         if: always()
