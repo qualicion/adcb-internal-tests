@@ -5,6 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   api-tests:
     runs-on: self-hosted
@@ -33,6 +38,18 @@ jobs:
             --reporter-htmlextra-export reports/test-report.html \
             --reporter-junitfull-export reports/junit-report.xml \
             --reporter-json-export reports/results.json
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'reports'
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
       
       - name: Send Slack Notification
         if: always()
@@ -72,7 +89,7 @@ jobs:
             COLOR="#dc3545"
           fi
           TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
-          GITHUB_URL="https://github.com/qualicion/adcb-internal-tests/actions"
+          REPORT_URL="${{ steps.deployment.outputs.page_url }}test-report.html"
           ENDPOINTS_JSON=$(echo "$ENDPOINTS" | jq -Rs .)
           jq -n \
             --arg status_emoji "$STATUS_EMOJI" \
@@ -87,9 +104,9 @@ jobs:
             --arg passed_assert "$PASSED_ASSERTIONS" \
             --arg failed_assert "$FAILED_ASSERTIONS" \
             --arg success_rate "$SUCCESS_RATE" \
-            --arg github_url "$GITHUB_URL" \
+            --arg report_url "$REPORT_URL" \
             --arg color "$COLOR" \
-            '{"attachments":[{"color":$color,"blocks":[{"type":"header","text":{"type":"plain_text","text":"\($status_emoji) Newman API Test Results","emoji":true}},{"type":"section","text":{"type":"mrkdwn","text":"*Test Run:* \($timestamp)\n*Status:* \($status_text)"}},{"type":"divider"},{"type":"section","text":{"type":"mrkdwn","text":"*📍 Endpoints Tested*\n\($endpoints)"}},{"type":"divider"},{"type":"section","text":{"type":"mrkdwn","text":"*📊 Test Summary*"}},{"type":"section","fields":[{"type":"mrkdwn","text":"*Success Rate*\n`\($success_rate)%` (\($passed_assert)/\($total_assert))"},{"type":"mrkdwn","text":"*Response Time*\n`\($response_time) ms` avg"}]},{"type":"section","fields":[{"type":"mrkdwn","text":"*✅ Passed*\n`\($passed_assert)` assertions"},{"type":"mrkdwn","text":"*❌ Failed*\n`\($failed_assert)` assertions"}]},{"type":"section","fields":[{"type":"mrkdwn","text":"*Endpoints*\n`\($total_req)` tested (`\($passed_req)` passed)"},{"type":"mrkdwn","text":"*Total Tests*\n`\($total_assert)` assertions"}]},{"type":"divider"},{"type":"actions","elements":[{"type":"button","text":{"type":"plain_text","text":"📄 Download Full Report","emoji":true},"url":$github_url,"style":"primary"}]},{"type":"context","elements":[{"type":"mrkdwn","text":"🏦 Open Finance UAT | Retail API Tests"}]}]}]}' | curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" -H 'Content-Type: application/json' -d @-
+            '{"attachments":[{"color":$color,"blocks":[{"type":"header","text":{"type":"plain_text","text":"\($status_emoji) Newman API Test Results","emoji":true}},{"type":"section","text":{"type":"mrkdwn","text":"*Test Run:* \($timestamp)\n*Status:* \($status_text)"}},{"type":"divider"},{"type":"section","text":{"type":"mrkdwn","text":"*📍 Endpoints Tested*\n\($endpoints)"}},{"type":"divider"},{"type":"section","text":{"type":"mrkdwn","text":"*📊 Test Summary*"}},{"type":"section","fields":[{"type":"mrkdwn","text":"*Success Rate*\n`\($success_rate)%` (\($passed_assert)/\($total_assert))"},{"type":"mrkdwn","text":"*Response Time*\n`\($response_time) ms` avg"}]},{"type":"section","fields":[{"type":"mrkdwn","text":"*✅ Passed*\n`\($passed_assert)` assertions"},{"type":"mrkdwn","text":"*❌ Failed*\n`\($failed_assert)` assertions"}]},{"type":"section","fields":[{"type":"mrkdwn","text":"*Endpoints*\n`\($total_req)` tested (`\($passed_req)` passed)"},{"type":"mrkdwn","text":"*Total Tests*\n`\($total_assert)` assertions"}]},{"type":"divider"},{"type":"actions","elements":[{"type":"button","text":{"type":"plain_text","text":"📄 View Full Report Online","emoji":true},"url":$report_url,"style":"primary"}]},{"type":"context","elements":[{"type":"mrkdwn","text":"🏦 Open Finance UAT | Retail API Tests"}]}]}]}' | curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" -H 'Content-Type: application/json' -d @-
       
       - name: Upload Test Report
         uses: actions/upload-artifact@v4
