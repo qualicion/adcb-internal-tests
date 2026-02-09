@@ -66,7 +66,10 @@ jobs:
             PASSED_ASSERTIONS=$((TOTAL_ASSERTIONS - FAILED_ASSERTIONS))
             PASSED_REQUESTS=$((TOTAL_REQUESTS - FAILED_REQUESTS))
             RESPONSE_TIME=$(jq '.run.timings.responseAverage' reports/results.json 2>/dev/null || echo 0)
-            ENDPOINTS=$(jq -r '.run.executions[] | "\(.item.name): \(.response.code // \"N/A\")"' reports/results.json 2>/dev/null | sed 's/^/• /' | head -20 | tr '\n' '|' | sed 's/|$//' | sed 's/|/\\n/g')
+            
+            ENDPOINTS_RAW=$(jq -r '.run.executions[] | "• \(.item.name): \(.response.code // "N/A")"' reports/results.json 2>/dev/null | head -20)
+            ENDPOINTS_ESCAPED=$(echo "$ENDPOINTS_RAW" | jq -Rs .)
+            
             if [ "$TOTAL_ASSERTIONS" -gt 0 ]; then
               SUCCESS_RATE=$((PASSED_ASSERTIONS * 100 / TOTAL_ASSERTIONS))
             else
@@ -80,7 +83,7 @@ jobs:
             PASSED_ASSERTIONS=0
             PASSED_REQUESTS=0
             RESPONSE_TIME=0
-            ENDPOINTS="No data"
+            ENDPOINTS_ESCAPED='"No data"'
             SUCCESS_RATE=0
           fi
           
@@ -97,48 +100,64 @@ jobs:
           TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
           REPORT_URL="https://qualicion.github.io/adcb-internal-tests/test-report.html"
           
+          cat > /tmp/slack_payload.json << EOF
+          {
+            "text": "${STATUS_EMOJI} Newman API Test Results - ${TIMESTAMP}",
+            "attachments": [{
+              "color": "${COLOR}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Status:* ${STATUS_TEXT}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*📍 Endpoints Tested*\nPLACEHOLDER"
+                  }
+                },
+                {
+                  "type": "divider"
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {"type": "mrkdwn", "text": "*Success Rate*\n\`${SUCCESS_RATE}%\` (${PASSED_ASSERTIONS}/${TOTAL_ASSERTIONS})" },
+                    {"type": "mrkdwn", "text": "*Avg Response*\n\`${RESPONSE_TIME} ms\`"}
+                  ]
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {"type": "mrkdwn", "text": "*✅ Passed*\n\`${PASSED_ASSERTIONS}\` assertions"},
+                    {"type": "mrkdwn", "text": "*❌ Failed*\n\`${FAILED_ASSERTIONS}\` assertions"}
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [{
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "📄 View Full Report"},
+                    "url": "${REPORT_URL}",
+                    "style": "primary"
+                  }]
+                }
+              ]
+            }]
+          }
+          EOF
+          
+          jq --argjson endpoints "$ENDPOINTS_ESCAPED" '.attachments[0].blocks[1].text.text = "*📍 Endpoints Tested*\n" + $endpoints' /tmp/slack_payload.json > /tmp/slack_final.json
+          
           curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
             -H 'Content-Type: application/json' \
-            -d "{
-              \"text\": \"${STATUS_EMOJI} Newman API Test Results - ${TIMESTAMP}\",
-              \"attachments\": [{
-                \"color\": \"${COLOR}\",
-                \"blocks\": [
-                  {
-                    \"type\": \"section\",
-                    \"text\": {
-                      \"type\": \"mrkdwn\",
-                      \"text\": \"*Status:* ${STATUS_TEXT}\\n*Endpoints Tested:* ${ENDPOINTS}\"
-                    }
-                  },
-                  {
-                    \"type\": \"section\",
-                    \"fields\": [
-                      {\"type\": \"mrkdwn\", \"text\": \"*Success Rate*\\n\`${SUCCESS_RATE}%\` (${PASSED_ASSERTIONS}/${TOTAL_ASSERTIONS})\" },
-                      {\"type\": \"mrkdwn\", \"text\": \"*Avg Response*\\n\`${RESPONSE_TIME} ms\`\"}
-                    ]
-                  },
-                  {
-                    \"type\": \"section\",
-                    \"fields\": [
-                      {\"type\": \"mrkdwn\", \"text\": \"*✅ Passed*\\n\`${PASSED_ASSERTIONS}\` assertions\"},
-                      {\"type\": \"mrkdwn\", \"text\": \"*❌ Failed*\\n\`${FAILED_ASSERTIONS}\` assertions\"}
-                    ]
-                  },
-                  {
-                    \"type\": \"actions\",
-                    \"elements\": [{
-                      \"type\": \"button\",
-                      \"text\": {\"type\": \"plain_text\", \"text\": \"📄 View Full Report\"},
-                      \"url\": \"${REPORT_URL}\",
-                      \"style\": \"primary\"
-                    }]
-                  }
-                ]
-              }]
-            }"
+            -d @/tmp/slack_final.json
       
-      - name: Upload Test Report  
+      - name: Upload Test Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
