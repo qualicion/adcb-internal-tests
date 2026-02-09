@@ -36,6 +36,8 @@ jobs:
       
       - name: Send Slack Notification
         if: always()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           if [ -f reports/results.json ]; then
             TOTAL_REQUESTS=$(jq '.run.stats.requests.total' reports/results.json 2>/dev/null || echo 0)
@@ -46,7 +48,6 @@ jobs:
             PASSED_REQUESTS=$((TOTAL_REQUESTS - FAILED_REQUESTS))
             RESPONSE_TIME=$(jq '.run.timings.responseAverage' reports/results.json 2>/dev/null || echo 0)
             ENDPOINT_NAME=$(jq -r '.run.executions[0].item.name' reports/results.json 2>/dev/null || echo "Unknown")
-            ENDPOINT_URL=$(jq -r '.run.executions[0].request.url.raw' reports/results.json 2>/dev/null | sed 's/https:\/\///' | cut -d'/' -f1-2 || echo "Unknown")
           else
             TOTAL_REQUESTS=0
             FAILED_REQUESTS=0
@@ -56,7 +57,6 @@ jobs:
             PASSED_REQUESTS=0
             RESPONSE_TIME=0
             ENDPOINT_NAME="Unknown"
-            ENDPOINT_URL="Unknown"
           fi
           
           if [ "$FAILED_ASSERTIONS" -eq 0 ]; then
@@ -67,73 +67,72 @@ jobs:
             STATUS_TEXT="TESTS FAILED"
           fi
           
-          cat > /tmp/slack_payload.json << 'SLACKEOF'
-          {
+          TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
+          
+          python3 << PYEOF
+          import json
+          import requests
+          import os
+          
+          payload = {
             "blocks": [
               {
                 "type": "header",
                 "text": {
                   "type": "plain_text",
-                  "text": "STATUS_PLACEHOLDER Newman Test Report - TIME_PLACEHOLDER",
-                  "emoji": true
+                  "text": f"{os.environ['STATUS_EMOJI']} Newman Test Report - {os.environ['TIMESTAMP']}",
+                  "emoji": True
                 }
               },
               {
                 "type": "section",
                 "fields": [
-                  {"type": "mrkdwn", "text": "*Status:*\nSTATUS_TEXT_PLACEHOLDER"},
-                  {"type": "mrkdwn", "text": "*Endpoint:*\nENDPOINT_PLACEHOLDER"}
+                  {"type": "mrkdwn", "text": f"*Status:*\n{os.environ['STATUS_TEXT']}"},
+                  {"type": "mrkdwn", "text": f"*Endpoint:*\n{os.environ['ENDPOINT_NAME']}"}
                 ]
               },
+              {"type": "divider"},
               {
-                "type": "divider"
+                "type": "section",
+                "fields": [
+                  {"type": "mrkdwn", "text": f"*📊 Endpoints Tested:*\n{os.environ['TOTAL_REQUESTS']}"},
+                  {"type": "mrkdwn", "text": f"*✅ Passed Endpoints:*\n{os.environ['PASSED_REQUESTS']}"},
+                  {"type": "mrkdwn", "text": f"*❌ Failed Endpoints:*\n{os.environ['FAILED_REQUESTS']}"},
+                  {"type": "mrkdwn", "text": f"*⚡ Avg Response:*\n{os.environ['RESPONSE_TIME']} ms"}
+                ]
               },
               {
                 "type": "section",
                 "fields": [
-                  {"type": "mrkdwn", "text": "*📊 Endpoints Tested:*\nTOTAL_REQ_PLACEHOLDER"},
-                  {"type": "mrkdwn", "text": "*✅ Passed Endpoints:*\nPASSED_REQ_PLACEHOLDER"},
-                  {"type": "mrkdwn", "text": "*❌ Failed Endpoints:*\nFAILED_REQ_PLACEHOLDER"},
-                  {"type": "mrkdwn", "text": "*⚡ Avg Response:*\nRESPONSE_TIME_PLACEHOLDER ms"}
-                ]
-              },
-              {
-                "type": "section",
-                "fields": [
-                  {"type": "mrkdwn", "text": "*🧪 Total Assertions:*\nTOTAL_ASSERT_PLACEHOLDER"},
-                  {"type": "mrkdwn", "text": "*✅ Passed:*\nPASSED_ASSERT_PLACEHOLDER"},
-                  {"type": "mrkdwn", "text": "*❌ Failed:*\nFAILED_ASSERT_PLACEHOLDER"},
+                  {"type": "mrkdwn", "text": f"*🧪 Total Assertions:*\n{os.environ['TOTAL_ASSERTIONS']}"},
+                  {"type": "mrkdwn", "text": f"*✅ Passed:*\n{os.environ['PASSED_ASSERTIONS']}"},
+                  {"type": "mrkdwn", "text": f"*❌ Failed:*\n{os.environ['FAILED_ASSERTIONS']}"},
                   {"type": "mrkdwn", "text": "*📄 Report:*\n<https://github.com/qualicion/adcb-internal-tests/actions|Download>"}
                 ]
               },
               {
                 "type": "context",
                 "elements": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "Open Finance UAT - Retail API Tests"
-                  }
+                  {"type": "mrkdwn", "text": "Open Finance UAT - Retail API Tests"}
                 ]
               }
             ]
           }
-          SLACKEOF
           
-          sed -i "s/STATUS_PLACEHOLDER/${STATUS_EMOJI}/g" /tmp/slack_payload.json
-          sed -i "s/TIME_PLACEHOLDER/$(date '+%Y-%m-%d %H:%M')/g" /tmp/slack_payload.json
-          sed -i "s/STATUS_TEXT_PLACEHOLDER/${STATUS_TEXT}/g" /tmp/slack_payload.json
-          sed -i "s/ENDPOINT_PLACEHOLDER/${ENDPOINT_NAME}/g" /tmp/slack_payload.json
-          sed -i "s/TOTAL_REQ_PLACEHOLDER/${TOTAL_REQUESTS}/g" /tmp/slack_payload.json
-          sed -i "s/PASSED_REQ_PLACEHOLDER/${PASSED_REQUESTS}/g" /tmp/slack_payload.json
-          sed -i "s/FAILED_REQ_PLACEHOLDER/${FAILED_REQUESTS}/g" /tmp/slack_payload.json
-          sed -i "s/RESPONSE_TIME_PLACEHOLDER/${RESPONSE_TIME}/g" /tmp/slack_payload.json
-          sed -i "s/TOTAL_ASSERT_PLACEHOLDER/${TOTAL_ASSERTIONS}/g" /tmp/slack_payload.json
-          sed -i "s/PASSED_ASSERT_PLACEHOLDER/${PASSED_ASSERTIONS}/g" /tmp/slack_payload.json
-          sed -i "s/FAILED_ASSERT_PLACEHOLDER/${FAILED_ASSERTIONS}/g" /tmp/slack_payload.json
-          
-          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
-            -H 'Content-Type: application/json' \
-            --data @/tmp/slack_payload.json
+          requests.post(os.environ['SLACK_WEBHOOK'], json=payload)
+          PYEOF
+        env:
+          STATUS_EMOJI: ${{ env.STATUS_EMOJI }}
+          STATUS_TEXT: ${{ env.STATUS_TEXT }}
+          TIMESTAMP: ${{ env.TIMESTAMP }}
+          ENDPOINT_NAME: ${{ env.ENDPOINT_NAME }}
+          TOTAL_REQUESTS: ${{ env.TOTAL_REQUESTS }}
+          PASSED_REQUESTS: ${{ env.PASSED_REQUESTS }}
+          FAILED_REQUESTS: ${{ env.FAILED_REQUESTS }}
+          RESPONSE_TIME: ${{ env.RESPONSE_TIME }}
+          TOTAL_ASSERTIONS: ${{ env.TOTAL_ASSERTIONS }}
+          PASSED_ASSERTIONS: ${{ env.PASSED_ASSERTIONS }}
+          FAILED_ASSERTIONS: ${{ env.FAILED_ASSERTIONS }}
       
       - name: Upload Test Report
         uses: actions/upload-artifact@v4
