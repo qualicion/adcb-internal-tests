@@ -36,40 +36,38 @@ jobs:
       
       - name: Send Slack Notification
         if: always()
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           if [ -f reports/results.json ]; then
-            TOTAL_REQUESTS=$(jq '.run.stats.requests.total' reports/results.json 2>/dev/null || echo 0)
-            FAILED_REQUESTS=$(jq '.run.stats.requests.failed' reports/results.json 2>/dev/null || echo 0)
-            TOTAL_ASSERTIONS=$(jq '.run.stats.assertions.total' reports/results.json 2>/dev/null || echo 0)
-            FAILED_ASSERTIONS=$(jq '.run.stats.assertions.failed' reports/results.json 2>/dev/null || echo 0)
-            PASSED_ASSERTIONS=$((TOTAL_ASSERTIONS - FAILED_ASSERTIONS))
-            PASSED_REQUESTS=$((TOTAL_REQUESTS - FAILED_REQUESTS))
-            RESPONSE_TIME=$(jq '.run.timings.responseAverage' reports/results.json 2>/dev/null || echo 0)
-            ENDPOINT_NAME=$(jq -r '.run.executions[0].item.name' reports/results.json 2>/dev/null || echo "Unknown")
+            export TOTAL_REQUESTS=$(jq '.run.stats.requests.total' reports/results.json 2>/dev/null || echo 0)
+            export FAILED_REQUESTS=$(jq '.run.stats.requests.failed' reports/results.json 2>/dev/null || echo 0)
+            export TOTAL_ASSERTIONS=$(jq '.run.stats.assertions.total' reports/results.json 2>/dev/null || echo 0)
+            export FAILED_ASSERTIONS=$(jq '.run.stats.assertions.failed' reports/results.json 2>/dev/null || echo 0)
+            export PASSED_ASSERTIONS=$((TOTAL_ASSERTIONS - FAILED_ASSERTIONS))
+            export PASSED_REQUESTS=$((TOTAL_REQUESTS - FAILED_REQUESTS))
+            export RESPONSE_TIME=$(jq '.run.timings.responseAverage' reports/results.json 2>/dev/null || echo 0)
+            export ENDPOINT_NAME=$(jq -r '.run.executions[0].item.name' reports/results.json 2>/dev/null || echo "Unknown")
           else
-            TOTAL_REQUESTS=0
-            FAILED_REQUESTS=0
-            TOTAL_ASSERTIONS=0
-            FAILED_ASSERTIONS=0
-            PASSED_ASSERTIONS=0
-            PASSED_REQUESTS=0
-            RESPONSE_TIME=0
-            ENDPOINT_NAME="Unknown"
+            export TOTAL_REQUESTS=0
+            export FAILED_REQUESTS=0
+            export TOTAL_ASSERTIONS=0
+            export FAILED_ASSERTIONS=0
+            export PASSED_ASSERTIONS=0
+            export PASSED_REQUESTS=0
+            export RESPONSE_TIME=0
+            export ENDPOINT_NAME="Unknown"
           fi
           
           if [ "$FAILED_ASSERTIONS" -eq 0 ]; then
-            STATUS_EMOJI="✅"
-            STATUS_TEXT="ALL TESTS PASSED"
+            export STATUS_EMOJI="✅"
+            export STATUS_TEXT="ALL TESTS PASSED"
           else
-            STATUS_EMOJI="❌"
-            STATUS_TEXT="TESTS FAILED"
+            export STATUS_EMOJI="❌"
+            export STATUS_TEXT="TESTS FAILED"
           fi
           
-          TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
+          export TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
           
-          python3 << PYEOF
+          python3 << 'PYEOF'
           import json
           import requests
           import os
@@ -119,20 +117,10 @@ jobs:
             ]
           }
           
-          requests.post(os.environ['SLACK_WEBHOOK'], json=payload)
+          requests.post(os.environ['SLACK_WEBHOOK_URL'], json=payload)
           PYEOF
         env:
-          STATUS_EMOJI: ${{ env.STATUS_EMOJI }}
-          STATUS_TEXT: ${{ env.STATUS_TEXT }}
-          TIMESTAMP: ${{ env.TIMESTAMP }}
-          ENDPOINT_NAME: ${{ env.ENDPOINT_NAME }}
-          TOTAL_REQUESTS: ${{ env.TOTAL_REQUESTS }}
-          PASSED_REQUESTS: ${{ env.PASSED_REQUESTS }}
-          FAILED_REQUESTS: ${{ env.FAILED_REQUESTS }}
-          RESPONSE_TIME: ${{ env.RESPONSE_TIME }}
-          TOTAL_ASSERTIONS: ${{ env.TOTAL_ASSERTIONS }}
-          PASSED_ASSERTIONS: ${{ env.PASSED_ASSERTIONS }}
-          FAILED_ASSERTIONS: ${{ env.FAILED_ASSERTIONS }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       
       - name: Upload Test Report
         uses: actions/upload-artifact@v4
