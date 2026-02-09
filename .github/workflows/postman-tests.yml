@@ -38,89 +38,93 @@ jobs:
         if: always()
         run: |
           if [ -f reports/results.json ]; then
-            export TOTAL_REQUESTS=$(jq '.run.stats.requests.total' reports/results.json 2>/dev/null || echo 0)
-            export FAILED_REQUESTS=$(jq '.run.stats.requests.failed' reports/results.json 2>/dev/null || echo 0)
-            export TOTAL_ASSERTIONS=$(jq '.run.stats.assertions.total' reports/results.json 2>/dev/null || echo 0)
-            export FAILED_ASSERTIONS=$(jq '.run.stats.assertions.failed' reports/results.json 2>/dev/null || echo 0)
-            export PASSED_ASSERTIONS=$((TOTAL_ASSERTIONS - FAILED_ASSERTIONS))
-            export PASSED_REQUESTS=$((TOTAL_REQUESTS - FAILED_REQUESTS))
-            export RESPONSE_TIME=$(jq '.run.timings.responseAverage' reports/results.json 2>/dev/null || echo 0)
-            export ENDPOINT_NAME=$(jq -r '.run.executions[0].item.name' reports/results.json 2>/dev/null || echo "Unknown")
+            TOTAL_REQUESTS=$(jq '.run.stats.requests.total' reports/results.json 2>/dev/null || echo 0)
+            FAILED_REQUESTS=$(jq '.run.stats.requests.failed' reports/results.json 2>/dev/null || echo 0)
+            TOTAL_ASSERTIONS=$(jq '.run.stats.assertions.total' reports/results.json 2>/dev/null || echo 0)
+            FAILED_ASSERTIONS=$(jq '.run.stats.assertions.failed' reports/results.json 2>/dev/null || echo 0)
+            PASSED_ASSERTIONS=$((TOTAL_ASSERTIONS - FAILED_ASSERTIONS))
+            PASSED_REQUESTS=$((TOTAL_REQUESTS - FAILED_REQUESTS))
+            RESPONSE_TIME=$(jq '.run.timings.responseAverage' reports/results.json 2>/dev/null || echo 0)
+            ENDPOINT_NAME=$(jq -r '.run.executions[0].item.name' reports/results.json 2>/dev/null || echo "Unknown")
           else
-            export TOTAL_REQUESTS=0
-            export FAILED_REQUESTS=0
-            export TOTAL_ASSERTIONS=0
-            export FAILED_ASSERTIONS=0
-            export PASSED_ASSERTIONS=0
-            export PASSED_REQUESTS=0
-            export RESPONSE_TIME=0
-            export ENDPOINT_NAME="Unknown"
+            TOTAL_REQUESTS=0
+            FAILED_REQUESTS=0
+            TOTAL_ASSERTIONS=0
+            FAILED_ASSERTIONS=0
+            PASSED_ASSERTIONS=0
+            PASSED_REQUESTS=0
+            RESPONSE_TIME=0
+            ENDPOINT_NAME="Unknown"
           fi
           
           if [ "$FAILED_ASSERTIONS" -eq 0 ]; then
-            export STATUS_EMOJI="✅"
-            export STATUS_TEXT="ALL TESTS PASSED"
+            STATUS_EMOJI="✅"
+            STATUS_TEXT="ALL TESTS PASSED"
           else
-            export STATUS_EMOJI="❌"
-            export STATUS_TEXT="TESTS FAILED"
+            STATUS_EMOJI="❌"
+            STATUS_TEXT="TESTS FAILED"
           fi
           
-          export TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
+          TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
           
-          python3 << 'PYEOF'
-          import json
-          import requests
-          import os
-          
-          payload = {
-            "blocks": [
-              {
-                "type": "header",
-                "text": {
-                  "type": "plain_text",
-                  "text": f"{os.environ['STATUS_EMOJI']} Newman Test Report - {os.environ['TIMESTAMP']}",
-                  "emoji": True
+          jq -n \
+            --arg status_emoji "$STATUS_EMOJI" \
+            --arg timestamp "$TIMESTAMP" \
+            --arg status_text "$STATUS_TEXT" \
+            --arg endpoint "$ENDPOINT_NAME" \
+            --arg total_req "$TOTAL_REQUESTS" \
+            --arg passed_req "$PASSED_REQUESTS" \
+            --arg failed_req "$FAILED_REQUESTS" \
+            --arg response_time "$RESPONSE_TIME" \
+            --arg total_assert "$TOTAL_ASSERTIONS" \
+            --arg passed_assert "$PASSED_ASSERTIONS" \
+            --arg failed_assert "$FAILED_ASSERTIONS" \
+            '{
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "\($status_emoji) Newman Test Report - \($timestamp)",
+                    "emoji": true
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {"type": "mrkdwn", "text": "*Status:*\n\($status_text)"},
+                    {"type": "mrkdwn", "text": "*Endpoint:*\n\($endpoint)"}
+                  ]
+                },
+                {"type": "divider"},
+                {
+                  "type": "section",
+                  "fields": [
+                    {"type": "mrkdwn", "text": "*📊 Endpoints Tested:*\n\($total_req)"},
+                    {"type": "mrkdwn", "text": "*✅ Passed Endpoints:*\n\($passed_req)"},
+                    {"type": "mrkdwn", "text": "*❌ Failed Endpoints:*\n\($failed_req)"},
+                    {"type": "mrkdwn", "text": "*⚡ Avg Response:*\n\($response_time) ms"}
+                  ]
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {"type": "mrkdwn", "text": "*🧪 Total Assertions:*\n\($total_assert)"},
+                    {"type": "mrkdwn", "text": "*✅ Passed:*\n\($passed_assert)"},
+                    {"type": "mrkdwn", "text": "*❌ Failed:*\n\($failed_assert)"},
+                    {"type": "mrkdwn", "text": "*📄 Report:*\n<https://github.com/qualicion/adcb-internal-tests/actions|Download>"}
+                  ]
+                },
+                {
+                  "type": "context",
+                  "elements": [
+                    {"type": "mrkdwn", "text": "Open Finance UAT - Retail API Tests"}
+                  ]
                 }
-              },
-              {
-                "type": "section",
-                "fields": [
-                  {"type": "mrkdwn", "text": f"*Status:*\n{os.environ['STATUS_TEXT']}"},
-                  {"type": "mrkdwn", "text": f"*Endpoint:*\n{os.environ['ENDPOINT_NAME']}"}
-                ]
-              },
-              {"type": "divider"},
-              {
-                "type": "section",
-                "fields": [
-                  {"type": "mrkdwn", "text": f"*📊 Endpoints Tested:*\n{os.environ['TOTAL_REQUESTS']}"},
-                  {"type": "mrkdwn", "text": f"*✅ Passed Endpoints:*\n{os.environ['PASSED_REQUESTS']}"},
-                  {"type": "mrkdwn", "text": f"*❌ Failed Endpoints:*\n{os.environ['FAILED_REQUESTS']}"},
-                  {"type": "mrkdwn", "text": f"*⚡ Avg Response:*\n{os.environ['RESPONSE_TIME']} ms"}
-                ]
-              },
-              {
-                "type": "section",
-                "fields": [
-                  {"type": "mrkdwn", "text": f"*🧪 Total Assertions:*\n{os.environ['TOTAL_ASSERTIONS']}"},
-                  {"type": "mrkdwn", "text": f"*✅ Passed:*\n{os.environ['PASSED_ASSERTIONS']}"},
-                  {"type": "mrkdwn", "text": f"*❌ Failed:*\n{os.environ['FAILED_ASSERTIONS']}"},
-                  {"type": "mrkdwn", "text": "*📄 Report:*\n<https://github.com/qualicion/adcb-internal-tests/actions|Download>"}
-                ]
-              },
-              {
-                "type": "context",
-                "elements": [
-                  {"type": "mrkdwn", "text": "Open Finance UAT - Retail API Tests"}
-                ]
-              }
-            ]
-          }
-          
-          requests.post(os.environ['SLACK_WEBHOOK_URL'], json=payload)
-          PYEOF
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+              ]
+            }' | curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H 'Content-Type: application/json' \
+              -d @-
       
       - name: Upload Test Report
         uses: actions/upload-artifact@v4
