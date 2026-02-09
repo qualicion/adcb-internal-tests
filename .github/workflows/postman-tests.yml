@@ -35,11 +35,31 @@ jobs:
       - name: Send Slack Notification
         if: always()
         run: |
-          # Extract test statistics from Newman JSON
           if [ -f reports/results.json ]; then
-            TOTAL_TESTS=$(grep -o '"total":[0-9]*' reports/results.json | grep -o '[0-9]*' | head -1)
-            FAILED_TESTS=$(grep -o '"failed":[0-9]*' reports/results.json | grep -o '[0-9]*' | head -1)
-            
-            # Default to 0 if empty
-            TOTAL_TESTS=${TOTAL_TESTS:-0}
-            FAILED_TESTS=${FAILED_TESTS:-0}
+            TOTAL_TESTS=$(jq '.run.stats.assertions.total' reports/results.json 2>/dev/null || echo 0)
+            FAILED_TESTS=$(jq '.run.stats.assertions.failed' reports/results.json 2>/dev/null || echo 0)
+            PASSED_TESTS=$((TOTAL_TESTS - FAILED_TESTS))
+          else
+            TOTAL_TESTS=0
+            FAILED_TESTS=0
+            PASSED_TESTS=0
+          fi
+          
+          if [ "$FAILED_TESTS" -eq 0 ]; then
+            STATUS="✅ All Tests Passed"
+            COLOR="good"
+          else
+            STATUS="❌ ${FAILED_TESTS} Tests Failed"
+            COLOR="danger"
+          fi
+          
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H 'Content-Type: application/json' \
+            -d "{\"text\":\"Newman Test Report - $(date '+%Y-%m-%d %H:%M')\",\"attachments\":[{\"color\":\"${COLOR}\",\"title\":\"${STATUS}\",\"fields\":[{\"title\":\"Total Assertions\",\"value\":\"${TOTAL_TESTS}\",\"short\":true},{\"title\":\"Passed\",\"value\":\"${PASSED_TESTS}\",\"short\":true},{\"title\":\"Failed\",\"value\":\"${FAILED_TESTS}\",\"short\":true}],\"footer\":\"Download HTML report from GitHub Actions artifacts\"}]}"
+      
+      - name: Upload Test Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: newman-report
+          path: reports/
