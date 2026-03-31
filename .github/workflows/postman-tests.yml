@@ -31,7 +31,7 @@ jobs:
         run: |
           mkdir -p reports
           newman run "https://api.getpostman.com/collections/48072727-563ceed9-6504-402b-b534-cecb13f79d6f?apikey=${{ secrets.POSTMAN_API_KEY }}" \
-            --environment "https://api.getpostman.com/environments/48072727-4c7a9092-93cc-4de3-8b56-e0bf5dbd09a1?apikey=${{ secrets.POSTMAN_API_KEY }}" \
+            --environment "https://api.getpostman.com/environments/6fd9e9de-7552-46c5-832a-0b63879f6d63?apikey=${{ secrets.POSTMAN_API_KEY }}" \
             --ssl-client-cert "/Users/boduniyi/Desktop/actions-runner/certs/CJE8NXWsIJe-oN0U5beb1TCIEvpAKrhfWxHtNd7ORko.pem" \
             --ssl-client-key "/Users/boduniyi/Desktop/actions-runner/certs/86978693-3039-449d-9acd-3771392a4c7f-opf_uae_client_signing.key" \
             --insecure \
